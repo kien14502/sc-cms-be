@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:mac;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    enabled: false
+
+mac:
+  security:
+    jwt-secret: test-secret-at-least-thirty-two-bytes-long
+    access-token-minutes: 30
+    mfa-challenge-minutes: 5
+    issuer: mac-test
+  invitation:
+    expiration-hours: 24
+  api-token:
+    default-expiration-days: 90

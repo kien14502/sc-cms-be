@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: mac-m1-partner
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/mac}
+    username: ${DB_USERNAME:mac}
+    password: ${DB_PASSWORD:mac}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+mac:
+  security:
+    jwt-secret: ${JWT_SECRET:change-this-development-secret-at-least-32-bytes}
+    access-token-minutes: ${ACCESS_TOKEN_MINUTES:30}
+    mfa-challenge-minutes: 5
+    issuer: mac-cms
+  invitation:
+    expiration-hours: 24
+  api-token:
+    default-expiration-days: 90
+  bootstrap-admin:
+    email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+    full-name: ${BOOTSTRAP_ADMIN_NAME:Platform Admin}
