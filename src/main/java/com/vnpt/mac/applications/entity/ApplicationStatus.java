@@ -1,4 +1,4 @@
-package com.vnpt.mac.partner.entity;
+package com.vnpt.mac.applications.entity;
 
 public enum ApplicationStatus {
     DRAFT,

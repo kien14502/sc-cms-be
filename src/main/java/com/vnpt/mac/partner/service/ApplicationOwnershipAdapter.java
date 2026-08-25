@@ -1,6 +1,6 @@
 package com.vnpt.mac.partner.service;
 
-import com.vnpt.mac.partner.repository.ApplicationRepository;
+import com.vnpt.mac.applications.repository.ApplicationRepository;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 

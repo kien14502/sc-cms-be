@@ -1,7 +1,7 @@
-package com.vnpt.mac.partner.repository;
+package com.vnpt.mac.applications.repository;
 
-import com.vnpt.mac.partner.entity.ApplicationEntity;
-import com.vnpt.mac.partner.entity.ApplicationStatus;
+import com.vnpt.mac.applications.entity.ApplicationEntity;
+import com.vnpt.mac.applications.entity.ApplicationStatus;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
