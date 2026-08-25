@@ -20,7 +20,12 @@ public enum ErrorCode {
     INVITATION_INVALID(HttpStatus.BAD_REQUEST),
     API_TOKEN_NOT_FOUND(HttpStatus.NOT_FOUND),
     ASSIGNMENT_INVALID(HttpStatus.BAD_REQUEST),
-    CONCURRENT_MODIFICATION(HttpStatus.CONFLICT);
+    CONCURRENT_MODIFICATION(HttpStatus.CONFLICT),
+    APPLICATION_NOT_FOUND(HttpStatus.NOT_FOUND),
+    VERSION_NOT_FOUND(HttpStatus.NOT_FOUND),
+    VERSION_STATUS_INVALID(HttpStatus.CONFLICT),
+    VERSION_NOT_EDITABLE(HttpStatus.CONFLICT),
+    CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND);
 
     private final HttpStatus status;
     ErrorCode(HttpStatus status) { this.status = status; }
