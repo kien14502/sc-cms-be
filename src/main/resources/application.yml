@@ -17,6 +17,10 @@ spring:
     enabled: true
   jackson:
     default-property-inclusion: non_null
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
 
 server:
   port: ${SERVER_PORT:8080}
@@ -43,3 +47,6 @@ mac:
     email: ${BOOTSTRAP_ADMIN_EMAIL:}
     password: ${BOOTSTRAP_ADMIN_PASSWORD:}
     full-name: ${BOOTSTRAP_ADMIN_NAME:Platform Admin}
+  storage:
+    artifacts-dir: ${ARTIFACTS_DIR:./data/artifacts}
+    max-artifact-bytes: ${MAX_ARTIFACT_BYTES:104857600}
