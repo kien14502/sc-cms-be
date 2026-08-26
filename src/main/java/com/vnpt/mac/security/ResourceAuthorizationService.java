@@ -26,7 +26,7 @@ public class ResourceAuthorizationService {
 
     public boolean app(UUID appId) {
         var p = current.require();
-        return hasRole(p, "PLATFORM_ADMIN") || hasRole(p, "ADMIN")
+        return hasRole(p, "PLATFORM_ADMIN") || hasRole(p, "ADMIN") || hasRole(p, "REVIEWER")
                 || (hasRole(p, "PARTNER_ADMIN") && p.partnerId() != null && ownership.belongsToPartner(appId, p.partnerId()))
                 || assignments.findByAppIdAndUserIdAndRevokedAtIsNull(appId, p.userId()).isPresent();
     }

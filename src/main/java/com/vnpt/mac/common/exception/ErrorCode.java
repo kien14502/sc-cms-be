@@ -28,7 +28,8 @@ public enum ErrorCode {
     CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND),
     ARTIFACT_TYPE_MISMATCH(HttpStatus.BAD_REQUEST),
     ARTIFACT_MISSING(HttpStatus.BAD_REQUEST),
-    VALIDATION_FAILED(HttpStatus.CONFLICT);
+    VALIDATION_FAILED(HttpStatus.CONFLICT),
+    REVIEW_FEEDBACK_REQUIRED(HttpStatus.BAD_REQUEST);
 
     private final HttpStatus status;
     ErrorCode(HttpStatus status) { this.status = status; }
