@@ -10,11 +10,6 @@ INSERT INTO permissions(id, code, description) VALUES
     ('00000000-0000-0000-0000-000000000122', 'version.review', 'Approve/Reject/Request changes on a version');
 
 INSERT INTO role_permissions(role_id, permission_id)
-SELECT '00000000-0000-0000-0000-000000000201', id FROM permissions
-WHERE code IN ('app.read.all', 'app.read', 'app.create', 'version.read', 'version.create', 'version.update',
-               'artifact.upload', 'version.submit', 'version.review');
-
-INSERT INTO role_permissions(role_id, permission_id)
 SELECT '00000000-0000-0000-0000-000000000203', id FROM permissions
 WHERE code IN ('app.read', 'app.create', 'version.read', 'version.create', 'version.update',
                'artifact.upload', 'version.submit');
