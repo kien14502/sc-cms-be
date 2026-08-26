@@ -79,6 +79,7 @@ public class ArtifactService {
             storage.delete(existing.getStorageKey());
             artifacts.delete(existing);
         });
+        artifacts.flush();
         var stored = storage.store(versionId, file.getOriginalFilename(), content);
         var entity = artifacts.save(VersionArtifactEntity.create(versionId, kind, stored.storageKey(),
                 file.getOriginalFilename(), stored.sizeBytes(), stored.checksumSha256(), null));
