@@ -39,7 +39,7 @@ public class ManifestValidationService {
             while ((entry = zip.getNextEntry()) != null) {
                 if (entry.getName().equals("manifest.json")) {
                     hasManifest = true;
-                    byte[] manifestBytes = zip.readAllBytes();
+                    byte[] manifestBytes = zip.readNBytes(1_000_000);
                     try {
                         var node = MAPPER.readTree(manifestBytes);
                         manifestValidJson = node != null && node.isObject();

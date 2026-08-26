@@ -15,6 +15,8 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -76,11 +78,18 @@ public class ArtifactService {
                     "App type " + app.getAppType() + " không nhận artifact qua endpoint này");
         }
         artifacts.findByVersionId(versionId).ifPresent(existing -> {
-            storage.delete(existing.getStorageKey());
+            String oldStorageKey = existing.getStorageKey();
             artifacts.delete(existing);
+            // Physically delete the old file only once the DB row deletion is durable, so a
+            // later rollback in this same transaction (e.g. recordValidationRun or audit.log
+            // throwing) can't leave the DB pointing at a file we already removed from disk.
+            runAfterCommit(() -> storage.delete(oldStorageKey));
         });
         artifacts.flush();
         var stored = storage.store(versionId, file.getOriginalFilename(), content);
+        // If this transaction rolls back after the file is physically written (but before the
+        // referencing row commits), clean up the orphaned file instead of leaking it on disk.
+        runOnRollback(() -> storage.delete(stored.storageKey()));
         var entity = artifacts.save(VersionArtifactEntity.create(versionId, kind, stored.storageKey(),
                 file.getOriginalFilename(), stored.sizeBytes(), stored.checksumSha256(), null));
         recordValidationRun(versionId, outcome);
@@ -160,5 +169,39 @@ public class ArtifactService {
 
     private ApplicationEntity requireApp(UUID appId) {
         return applications.findById(appId).orElseThrow(() -> new BusinessException(ErrorCode.APPLICATION_NOT_FOUND));
+    }
+
+    /** Runs {@code action} once the current transaction commits, deferring an irreversible
+     * filesystem side effect until the DB state it depends on is durable. Falls back to running
+     * immediately when no Spring transaction is active (e.g. plain-Mockito unit tests that call
+     * this service outside any transactional proxy) — in that case there is no commit to wait
+     * for, so running now preserves the pre-fix behavior. */
+    private void runAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
+        }
+    }
+
+    /** Runs {@code action} only if the current transaction rolls back, to compensate for a
+     * filesystem write that already happened but whose referencing DB row never committed.
+     * When no Spring transaction is active there is nothing to roll back, so this is a no-op. */
+    private void runOnRollback(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    if (status != TransactionSynchronization.STATUS_COMMITTED) {
+                        action.run();
+                    }
+                }
+            });
+        }
     }
 }
