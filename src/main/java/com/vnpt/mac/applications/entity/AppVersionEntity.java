@@ -21,7 +21,7 @@ public class AppVersionEntity extends BaseAuditEntity {
     @Column(name = "app_id", nullable = false)
     private UUID appId;
 
-    @Column(name = "partner_id", nullable = false)
+    @Column(name = "partner_id")
     private UUID partnerId;
 
     @Column(name = "version_code", nullable = false)

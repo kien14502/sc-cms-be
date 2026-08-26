@@ -13,7 +13,7 @@ public class ReviewSubmissionEntity {
     @Column(name = "version_id", nullable = false)
     private UUID versionId;
 
-    @Column(name = "partner_id", nullable = false)
+    @Column(name = "partner_id")
     private UUID partnerId;
 
     @Column(name = "review_round", nullable = false)

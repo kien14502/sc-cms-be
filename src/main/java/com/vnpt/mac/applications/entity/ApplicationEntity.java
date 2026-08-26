@@ -11,7 +11,7 @@ public class ApplicationEntity extends BaseAuditEntity {
     @Id
     private UUID id;
 
-    @Column(name = "partner_id", nullable = false)
+    @Column(name = "partner_id")
     private UUID partnerId;
 
     @Column(name = "app_code", nullable = false, unique = true, length = 50)
