@@ -70,6 +70,15 @@ Danh sách phân trang dùng `PageResponse<T>` làm `data`:
 | `API_TOKEN_NOT_FOUND` | 404 | Personal API token không tồn tại |
 | `ASSIGNMENT_INVALID` | 400 | Gán developer không hợp lệ |
 | `CONCURRENT_MODIFICATION` | 409 | Ghi đè do optimistic locking (`revision` lệch) |
+| `APPLICATION_NOT_FOUND` | 404 | Application không tồn tại |
+| `VERSION_NOT_FOUND` | 404 | Version không tồn tại |
+| `VERSION_STATUS_INVALID` | 409 | Chuyển trạng thái version không hợp lệ |
+| `VERSION_NOT_EDITABLE` | 409 | Version không ở trạng thái cho phép chỉnh sửa |
+| `CATEGORY_NOT_FOUND` | 404 | Category không tồn tại |
+| `ARTIFACT_TYPE_MISMATCH` | 400 | Loại artifact không khớp với app type |
+| `ARTIFACT_MISSING` | 400 | Artifact chưa được upload |
+| `VALIDATION_FAILED` | 409 | Validation không thành công |
+| `REVIEW_FEEDBACK_REQUIRED` | 400 | Feedback là bắt buộc cho quyết định này |
 
 ### Xác thực
 
@@ -556,11 +565,78 @@ Audit log giới hạn theo 1 partner. **Quyền**: `@resourceAuth.partner(#part
 
 ---
 
+## 5. Application & Version — `/api/v1/applications`
+
+Yêu cầu xác thực + permission tương ứng, cộng thêm `@resourceAuth.app(#appId)` (Partner Admin/Dev chỉ thao tác app thuộc partner/assignment của mình; Platform Admin và Reviewer không bị giới hạn theo partner).
+
+### `GET /api/v1/applications`
+
+Danh sách application. **Quyền**: `app.read.all` (toàn hệ thống) hoặc `app.read` (tự động lọc theo partner của caller).
+
+**Query params**: `status` (`ApplicationStatus`, optional), `appType` (`ApplicationType`, optional), `page`, `size`.
+
+**Response 200**: `PageResponse<ApplicationResponse>`.
+
+### `POST /api/v1/applications`
+
+Tạo Application (wizard) — tạo App shell và version 1 (`DRAFT`) trong 1 transaction. **Quyền**: `app.create`.
+
+**Request body** (`CreateApplicationRequest`)
+```json
+{
+  "appType": "MINIAPP",
+  "version": {
+    "versionName": "1.0.0",
+    "displayName": "My MiniApp",
+    "packageName": "com.vnpt.miniapp",
+    "descriptionShort": "string",
+    "descriptionLong": "string",
+    "supportedLanguages": ["vi", "en"],
+    "categoryCodes": ["UTILITIES"]
+  }
+}
+```
+
+**Response 200** (`ApplicationResponse`)
+```json
+{
+  "id": "uuid", "appCode": "APP-XXXXXXXX", "appType": "MINIAPP", "status": "DRAFT",
+  "firstParty": false, "killSwitchActive": false, "partnerId": "uuid",
+  "versionCount": 1, "latestVersion": { "...": "VersionResponse" }, "revision": 0
+}
+```
+
+### `GET /api/v1/applications/{id}`
+
+Chi tiết application. **Quyền**: `app.read` + resource-owner.
+
+### Version — `/api/v1/applications/{appId}/versions`
+
+- `GET` — danh sách version, lọc theo `status`. **Quyền**: `version.read`.
+- `POST` — tạo version mới (`version_code` tự tăng), body là `VersionMetadataFields` (như `version` ở trên). **Quyền**: `version.create`.
+- `GET /{versionId}` — chi tiết version. **Quyền**: `version.read`.
+- `PATCH /{versionId}` — cập nhật `displayName/descriptionShort/descriptionLong/supportedLanguages/categoryCodes`; chỉ khi version ở `DRAFT`/`CHANGES_REQUESTED`. **Quyền**: `version.update`.
+
+### Artifact & Validation — `/api/v1/applications/{appId}/versions/{versionId}`
+
+- `POST /artifact` (multipart, field `file`) — upload ZIP (MiniApp) hoặc APK/AAB (Feature App). **Quyền**: `artifact.upload`.
+- `PUT /webapp-config` — `{ "destinationUrl": "https://..." }`, chỉ cho WebApp. **Quyền**: `artifact.upload`.
+- `PUT /module-config` — `{ "moduleNamespace": "string", "description": "string" }`, chỉ cho App Module. **Quyền**: `artifact.upload`.
+- `GET /validation` — kết quả validate mới nhất (`ValidationRunResponse`, `findings[]` gồm `ruleCode/severity/message`). **Quyền**: `version.read`.
+
+### Review — `/api/v1/applications/{appId}/versions/{versionId}`
+
+- `POST /submit` — submit version để review; yêu cầu lần validate gần nhất `PASSED` (trừ App2App). **Quyền**: `version.submit`.
+- `POST /review-decisions` — `{ "decision": "APPROVE|REJECT|REQUEST_CHANGES", "feedback": "string" }` (`feedback` bắt buộc khi không phải `APPROVE`). **Quyền**: `version.review` (Platform Admin hoặc Reviewer, không giới hạn theo partner).
+- `GET /review-history` — toàn bộ các lượt submit + quyết định, theo thứ tự thời gian. **Quyền**: `version.read`.
+
+---
+
 ## Nguồn tham chiếu (source-of-truth)
 
 Tài liệu này được sinh trực tiếp từ source code, đối chiếu lại khi API thay đổi:
 
-- Controllers: `security/AuthController.java`, `partner/controller/PartnerController.java`, `partner/controller/PartnerUserController.java`, `partner/controller/AdminUserController.java`, `partner/controller/ProfileController.java`, `partner/controller/AppAssignmentController.java`, `audit/AuditController.java`
-- DTOs: `security/AuthDtos.java`, `partner/dto/PartnerDtos.java`, `partner/dto/UserDtos.java`, `audit/AuditQueryService.java`
+- Controllers: `security/AuthController.java`, `partner/controller/PartnerController.java`, `partner/controller/PartnerUserController.java`, `partner/controller/AdminUserController.java`, `partner/controller/ProfileController.java`, `partner/controller/AppAssignmentController.java`, `audit/AuditController.java`, `applications/controller/ApplicationController.java`, `applications/controller/VersionController.java`, `applications/controller/ArtifactController.java`, `applications/controller/ReviewController.java`
+- DTOs: `security/AuthDtos.java`, `partner/dto/PartnerDtos.java`, `partner/dto/UserDtos.java`, `audit/AuditQueryService.java`, `applications/dto/ApplicationDtos.java`, `applications/dto/VersionDtos.java`, `applications/dto/ArtifactDtos.java`, `applications/dto/ReviewDtos.java`
 - Envelope & lỗi: `common/response/ApiResponse.java`, `common/response/PageResponse.java`, `common/exception/ErrorCode.java`, `common/exception/GlobalExceptionHandler.java`
 - Xác thực: `security/SecurityConfig.java`, `security/BearerAuthenticationFilter.java`
