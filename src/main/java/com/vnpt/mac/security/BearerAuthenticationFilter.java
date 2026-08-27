@@ -38,8 +38,8 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ") && SecurityContextHolder.getContext().getAuthentication() == null) {
-            String token = header.substring(7);
+        String token = header != null && header.startsWith("Bearer ") ? header.substring(7) : cookieToken(request);
+        if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             try {
                 var result = token.startsWith("mac_pat_") ? authenticatePat(token) : new Authenticated(authenticateJwt(token), null);
                 if (result != null && result.user() != null && result.user().getStatus() == UserStatus.ACTIVE) {
@@ -52,6 +52,15 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
             }
         }
         chain.doFilter(request, response);
+    }
+
+    private String cookieToken(HttpServletRequest request) {
+        var cookies = request.getCookies();
+        if (cookies == null) return null;
+        for (var cookie : cookies) {
+            if ("mac_access_token".equals(cookie.getName())) return cookie.getValue();
+        }
+        return null;
     }
 
     private com.vnpt.mac.partner.entity.UserEntity authenticateJwt(String token) throws Exception {
