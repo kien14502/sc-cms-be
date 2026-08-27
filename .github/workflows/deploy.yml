@@ -25,7 +25,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Log in to Amazon ECR
         id: ecr-login
@@ -34,7 +34,7 @@ jobs:
       - name: Build and push image
         env:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" -t "$REGISTRY/$REPOSITORY:latest" .
@@ -57,10 +57,10 @@ jobs:
           script: |
             set -e
             REGISTRY="${{ needs.build-and-push.outputs.registry }}"
-            REPOSITORY="${{ vars.ECR_REPOSITORY }}"
+            REPOSITORY="${{ secrets.ECR_REPOSITORY }}"
             IMAGE="$REGISTRY/$REPOSITORY:${{ needs.build-and-push.outputs.image_tag }}"
 
-            aws ecr get-login-password --region "${{ vars.AWS_REGION }}" \
+            aws ecr get-login-password --region "${{ secrets.AWS_REGION }}" \
               | docker login --username AWS --password-stdin "$REGISTRY"
 
             APP_DIR="$HOME/mac-m1-partner"
