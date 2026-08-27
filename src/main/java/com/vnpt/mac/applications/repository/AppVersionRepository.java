@@ -12,6 +12,7 @@ public interface AppVersionRepository extends JpaRepository<AppVersionEntity, UU
     Page<AppVersionEntity> findByAppId(UUID appId, Pageable pageable);
     Page<AppVersionEntity> findByAppIdAndStatus(UUID appId, VersionStatus status, Pageable pageable);
     Optional<AppVersionEntity> findTopByAppIdOrderByVersionCodeDesc(UUID appId);
+    Optional<AppVersionEntity> findTopByAppIdAndStatusOrderByVersionCodeDesc(UUID appId, VersionStatus status);
     long countByAppId(UUID appId);
     boolean existsByAppIdAndStatus(UUID appId, VersionStatus status);
 }

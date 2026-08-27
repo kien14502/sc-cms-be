@@ -22,18 +22,21 @@ public class ReviewService {
     private final ValidationRunRepository validationRuns;
     private final ReviewSubmissionRepository submissions;
     private final ReviewDecisionRepository decisions;
+    private final AppVersionPermissionRepository versionPermissions;
     private final CurrentUser currentUser;
     private final AuditService audit;
 
     public ReviewService(VersionService versionService, ApplicationRepository applications, AppVersionRepository versions,
                          ValidationRunRepository validationRuns, ReviewSubmissionRepository submissions,
-                         ReviewDecisionRepository decisions, CurrentUser currentUser, AuditService audit) {
+                         ReviewDecisionRepository decisions, AppVersionPermissionRepository versionPermissions,
+                         CurrentUser currentUser, AuditService audit) {
         this.versionService = versionService;
         this.applications = applications;
         this.versions = versions;
         this.validationRuns = validationRuns;
         this.submissions = submissions;
         this.decisions = decisions;
+        this.versionPermissions = versionPermissions;
         this.currentUser = currentUser;
         this.audit = audit;
     }
@@ -48,6 +51,8 @@ public class ReviewService {
             if (!latestRun.passed())
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "Còn lỗi validation mức ERROR, không thể submit");
         }
+        if (versionPermissions.existsByVersionIdAndStatusIn(versionId, List.of(PermissionRequestStatus.BLOCKED)))
+            throw new BusinessException(ErrorCode.PERMISSION_BLOCKED, "Còn permission bị chặn theo app type, không thể submit");
         version.submit();
         var submission = submissions.save(ReviewSubmissionEntity.create(versionId, version.getPartnerId(), version.getReviewRound(), currentUser.id()));
         var response = ReviewSubmissionResponse.from(submission, null);
@@ -68,6 +73,9 @@ public class ReviewService {
         var decisionEntity = decisions.save(ReviewDecisionEntity.create(submission.getId(), r.decision(), r.feedback(), currentUser.id()));
         switch (r.decision()) {
             case APPROVE -> {
+                if (versionPermissions.existsByVersionIdAndStatusIn(versionId, List.of(PermissionRequestStatus.PENDING_REVIEW)))
+                    throw new BusinessException(ErrorCode.PERMISSION_PENDING_REVIEW,
+                            "Còn permission ở trạng thái PENDING_REVIEW, chưa thể APPROVE version");
                 version.approve();
                 submission.markDecided(SubmissionStatus.APPROVED);
                 if (!hadApprovedBefore) {

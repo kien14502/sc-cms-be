@@ -12,6 +12,7 @@ import com.vnpt.mac.applications.entity.SubmissionStatus;
 import com.vnpt.mac.applications.entity.ValidationRunEntity;
 import com.vnpt.mac.applications.entity.VersionStatus;
 import com.vnpt.mac.applications.repository.ApplicationRepository;
+import com.vnpt.mac.applications.repository.AppVersionPermissionRepository;
 import com.vnpt.mac.applications.repository.AppVersionRepository;
 import com.vnpt.mac.applications.repository.ReviewDecisionRepository;
 import com.vnpt.mac.applications.repository.ReviewSubmissionRepository;
@@ -53,11 +54,13 @@ class ReviewServiceTest {
     @Mock ValidationRunRepository validationRuns;
     @Mock ReviewSubmissionRepository submissions;
     @Mock ReviewDecisionRepository decisions;
+    @Mock AppVersionPermissionRepository versionPermissions;
     @Mock CurrentUser currentUser;
     @Mock AuditService audit;
 
     private ReviewService newService() {
-        return new ReviewService(versionService, applications, versions, validationRuns, submissions, decisions, currentUser, audit);
+        return new ReviewService(versionService, applications, versions, validationRuns, submissions, decisions,
+                versionPermissions, currentUser, audit);
     }
 
     private AppVersionEntity draftVersion(UUID appId, UUID partnerId) {
