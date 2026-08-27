@@ -29,6 +29,11 @@ management:
       exposure:
         include: health,info,metrics
 
+springdoc:
+  swagger-ui:
+    url: /be/v3/api-docs
+    config-url: /be/v3/api-docs/swagger-config
+
 mac:
   security:
     jwt-secret: ${JWT_SECRET:change-this-development-secret-at-least-32-bytes}
