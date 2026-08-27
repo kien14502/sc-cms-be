@@ -48,18 +48,16 @@ with adapters that query the M2 application module. Until then, Partner Admin ap
 
 ## Deploy to AWS EC2
 
-The workflow in `.github/workflows/deploy.yml` builds the Docker image, pushes it to Amazon ECR, and deploys the exact commit image to an EC2 instance when `main` is updated (or on manual dispatch).
+The workflow in `.github/workflows/deploy.yml` copies the repository to an EC2 instance over SSH, builds the Docker image directly on the instance, and deploys it when `main` is updated (or on manual dispatch). No AWS credentials or container registry are involved.
 
-The `deploy` job runs Postgres and the app as two containers on the EC2 instance itself via Docker Compose (no RDS): the app connects to Postgres over the Compose network at `jdbc:postgresql://postgres:5432/mac`, and only the app's port 8080 is published on the host.
+The `deploy` job runs Postgres and the app as two containers on the EC2 instance itself via Docker Compose: the app connects to Postgres over the Compose network at `jdbc:postgresql://postgres:5432/mac`, and only the app's port 8080 is published on the host.
 
 Before enabling it:
 
-1. Create an ECR repository and configure repository variables `AWS_REGION` and `ECR_REPOSITORY`.
-2. Create a GitHub Environment named `production` (Settings → Environments) and add the secrets below to it.
-3. Add secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` with permission to push to ECR.
-4. Add `EC2_HOST`, `EC2_USER`, and `EC2_SSH_KEY` secrets. `EC2_PORT` is optional.
-5. Give the EC2 instance an IAM role with ECR pull permissions, and install Docker (with the Compose plugin), AWS CLI, and `curl`.
-6. Add a `FILE_ENV` secret containing the runtime `.env` file content (one `KEY=value` per line): `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, and optionally `BOOTSTRAP_ADMIN_NAME`. `DB_URL` does not need to be set — the workflow points it at the Compose Postgres service. The workflow writes this secret to `.env` next to the generated `docker-compose.yml` on the instance.
-7. Allow inbound TCP 8080 only as needed, preferably exposing the service through an HTTPS reverse proxy. Postgres is not published outside the instance.
+1. Create a GitHub Environment named `production` (Settings → Environments) and add the secrets below to it.
+2. Add `EC2_HOST`, `EC2_USER`, and `EC2_SSH_KEY` secrets. `EC2_PORT` is optional.
+3. Install Docker (with the Compose plugin) on the EC2 instance.
+4. Add a `FILE_ENV` secret containing the runtime `.env` file content (one `KEY=value` per line): `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, and optionally `BOOTSTRAP_ADMIN_NAME`. `DB_URL` does not need to be set — the workflow points it at the Compose Postgres service. The workflow writes this secret to `.env` next to the generated `docker-compose.yml` on the instance.
+5. Allow inbound TCP 8080 only as needed, preferably exposing the service through an HTTPS reverse proxy. Postgres is not published outside the instance.
 
 Postgres data persists in a named Docker volume on the EC2 instance's own disk — there is no managed backup/HA. Snapshot the instance's EBS volume (or add a backup job) if you need durability guarantees beyond that.
