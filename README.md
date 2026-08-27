@@ -48,16 +48,17 @@ with adapters that query the M2 application module. Until then, Partner Admin ap
 
 ## Deploy to AWS EC2
 
-The workflow in `.github/workflows/deploy.yml` copies the repository to an EC2 instance over SSH, builds the Docker image directly on the instance, and deploys it when `main` is updated (or on manual dispatch). No AWS credentials or container registry are involved.
+The workflow in `.github/workflows/deploy.yml` builds the Docker image on GitHub Actions, pushes it to the GitHub Container Registry (`ghcr.io`), and deploys the exact commit image to an EC2 instance when `main` is updated (or on manual dispatch). No AWS credentials are needed for the registry — pushing and pulling both authenticate with the workflow's built-in `GITHUB_TOKEN`.
 
-The `deploy` job runs Postgres and the app as two containers on the EC2 instance itself via Docker Compose: the app connects to Postgres over the Compose network at `jdbc:postgresql://postgres:5432/mac`, and only the app's port 8080 is published on the host.
+The `deploy` job runs Postgres and the app as two containers on the EC2 instance itself via Docker Compose (no RDS): the app connects to Postgres over the Compose network at `jdbc:postgresql://postgres:5432/mac`, and only the app's port 8080 is published on the host.
 
 Before enabling it:
 
 1. Create a GitHub Environment named `production` (Settings → Environments) and add the secrets below to it.
 2. Add `EC2_HOST`, `EC2_USER`, and `EC2_SSH_KEY` secrets. `EC2_PORT` is optional.
-3. Install Docker (with the Compose plugin) on the EC2 instance.
-4. Add a `FILE_ENV` secret containing the runtime `.env` file content (one `KEY=value` per line): `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, and optionally `BOOTSTRAP_ADMIN_NAME`. `DB_URL` does not need to be set — the workflow points it at the Compose Postgres service. The workflow writes this secret to `.env` next to the generated `docker-compose.yml` on the instance.
+3. Install Docker (with the Compose plugin) on the EC2 instance. No AWS CLI or IAM role is needed — it authenticates to GHCR with `docker login` using the same `GITHUB_TOKEN` forwarded from the workflow run.
+4. Add a `FILE_ENV` secret containing the runtime `.env` file content (one `KEY=value` per line): `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, and optionally `BOOTSTRAP_ADMIN_NAME`. `DB_URL` does not need to be set — the workflow points it at the Compose Postgres service.
 5. Allow inbound TCP 8080 only as needed, preferably exposing the service through an HTTPS reverse proxy. Postgres is not published outside the instance.
+6. The first successful run publishes a package under the repository on GitHub (Packages tab). If it's created private, no further action is needed since the deploy step authenticates before pulling.
 
 Postgres data persists in a named Docker volume on the EC2 instance's own disk — there is no managed backup/HA. Snapshot the instance's EBS volume (or add a backup job) if you need durability guarantees beyond that.

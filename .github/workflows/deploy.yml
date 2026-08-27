@@ -3,53 +3,105 @@ name: Deploy to AWS EC2
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
 
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  deploy:
+  build-and-push:
     runs-on: ubuntu-latest
-    environment: production
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Copy source to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_PORT || '22' }}
-          source: "."
-          target: "~/mac-m1-partner-src"
-          rm: true
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build and deploy on EC2
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image tag
+        id: meta
+        run: |
+          IMAGE="${REGISTRY}/${IMAGE_NAME}"
+          echo "image=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ steps.meta.outputs.image }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Write .env file
+        run: |
+          cat > .env <<'EOF'
+          ${{ secrets.FILE_ENV }}
+          EOF
+
+      - name: Test SSH connection to EC2
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_PORT || '22' }}
-          script_stop: true
+          port: ${{ secrets.EC2_PORT || 22 }}
+          script: echo "SSH connection successful"
+
+      - name: Copy .env to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          source: ".env"
+          target: "~/mac-m1-partner"
+          overwrite: true
+
+      - name: Deploy to EC2 over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE: ${{ needs.build-and-push.outputs.image }}
+          REGISTRY: ${{ env.REGISTRY }}
+          GHCR_ACTOR: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          envs: IMAGE,REGISTRY,GHCR_ACTOR,GHCR_TOKEN
           script: |
             set -e
-            SRC_DIR="$HOME/mac-m1-partner-src"
+            echo "$GHCR_TOKEN" | docker login "$REGISTRY" -u "$GHCR_ACTOR" --password-stdin
+
             APP_DIR="$HOME/mac-m1-partner"
-            IMAGE="mac-m1-partner:${{ github.sha }}"
-
-            docker build -t "$IMAGE" -t mac-m1-partner:latest "$SRC_DIR"
-
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
-
-            cat > .env <<'ENV_EOF'
-            ${{ secrets.FILE_ENV }}
-            ENV_EOF
             chmod 600 .env
 
             cat > docker-compose.yml <<'COMPOSE_EOF'
@@ -86,8 +138,9 @@ jobs:
               mac_postgres_data:
             COMPOSE_EOF
 
+            IMAGE="$IMAGE" docker compose pull app
             IMAGE="$IMAGE" docker compose up -d --remove-orphans
-            docker image prune -f
+            docker image prune -af
 
             for i in $(seq 1 10); do
               if curl -sf http://localhost:8080/actuator/health | grep -q '"status":"UP"'; then
@@ -101,3 +154,7 @@ jobs:
             echo "Health check failed after deployment"
             docker compose logs --tail 100 app
             exit 1
+
+      - name: Remove local .env file
+        if: always()
+        run: rm -f .env
