@@ -12,6 +12,7 @@ concurrency:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    environment: production
     outputs:
       image_tag: ${{ github.sha }}
       registry: ${{ steps.ecr-login.outputs.registry }}
