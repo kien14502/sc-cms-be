@@ -1,0 +1,122 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ github.sha }}
+      registry: ${{ steps.ecr-login.outputs.registry }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" -t "$REGISTRY/$REPOSITORY:latest" .
+          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          docker push "$REGISTRY/$REPOSITORY:latest"
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || '22' }}
+          script_stop: true
+          script: |
+            set -e
+            REGISTRY="${{ needs.build-and-push.outputs.registry }}"
+            REPOSITORY="${{ vars.ECR_REPOSITORY }}"
+            IMAGE="$REGISTRY/$REPOSITORY:${{ needs.build-and-push.outputs.image_tag }}"
+
+            aws ecr get-login-password --region "${{ vars.AWS_REGION }}" \
+              | docker login --username AWS --password-stdin "$REGISTRY"
+
+            APP_DIR="$HOME/mac-m1-partner"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+
+            cat > .env <<'ENV_EOF'
+            ${{ secrets.FILE_ENV }}
+            ENV_EOF
+            chmod 600 .env
+
+            cat > docker-compose.yml <<'COMPOSE_EOF'
+            services:
+              postgres:
+                image: postgres:17-alpine
+                restart: unless-stopped
+                environment:
+                  POSTGRES_DB: mac
+                  POSTGRES_USER: ${DB_USERNAME}
+                  POSTGRES_PASSWORD: ${DB_PASSWORD}
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d mac"]
+                  interval: 5s
+                  timeout: 3s
+                  retries: 10
+                volumes:
+                  - mac_postgres_data:/var/lib/postgresql/data
+
+              app:
+                image: ${IMAGE}
+                restart: unless-stopped
+                depends_on:
+                  postgres:
+                    condition: service_healthy
+                env_file:
+                  - .env
+                environment:
+                  DB_URL: jdbc:postgresql://postgres:5432/mac
+                ports:
+                  - "8080:8080"
+
+            volumes:
+              mac_postgres_data:
+            COMPOSE_EOF
+
+            IMAGE="$IMAGE" docker compose pull app
+            IMAGE="$IMAGE" docker compose up -d --remove-orphans
+
+            for i in $(seq 1 10); do
+              if curl -sf http://localhost:8080/actuator/health | grep -q '"status":"UP"'; then
+                echo "Deployment healthy"
+                exit 0
+              fi
+              echo "Waiting for app to become healthy... ($i/10)"
+              sleep 5
+            done
+
+            echo "Health check failed after deployment"
+            docker compose logs --tail 100 app
+            exit 1
