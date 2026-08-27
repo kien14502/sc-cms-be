@@ -70,6 +70,15 @@ Danh sách phân trang dùng `PageResponse<T>` làm `data`:
 | `API_TOKEN_NOT_FOUND` | 404 | Personal API token không tồn tại |
 | `ASSIGNMENT_INVALID` | 400 | Gán developer không hợp lệ |
 | `CONCURRENT_MODIFICATION` | 409 | Ghi đè do optimistic locking (`revision` lệch) |
+| `APPLICATION_NOT_FOUND` | 404 | Application không tồn tại |
+| `VERSION_NOT_FOUND` | 404 | Version không tồn tại |
+| `VERSION_STATUS_INVALID` | 409 | Chuyển trạng thái version không hợp lệ |
+| `VERSION_NOT_EDITABLE` | 409 | Version không ở trạng thái cho phép chỉnh sửa |
+| `CATEGORY_NOT_FOUND` | 404 | Category không tồn tại |
+| `ARTIFACT_TYPE_MISMATCH` | 400 | Loại artifact không khớp với app type |
+| `ARTIFACT_MISSING` | 400 | Artifact chưa được upload |
+| `VALIDATION_FAILED` | 409 | Validation không thành công |
+| `REVIEW_FEEDBACK_REQUIRED` | 400 | Feedback là bắt buộc cho quyết định này |
 
 ### Xác thực
 
@@ -556,11 +565,201 @@ Audit log giới hạn theo 1 partner. **Quyền**: `@resourceAuth.partner(#part
 
 ---
 
+## 5. Application & Version — `/api/v1/applications`
+
+Yêu cầu xác thực + permission tương ứng, cộng thêm `@resourceAuth.app(#appId)` (Partner Admin/Dev chỉ thao tác app thuộc partner/assignment của mình; Platform Admin và Reviewer không bị giới hạn theo partner).
+
+### `GET /api/v1/applications`
+
+Danh sách application. **Quyền**: `app.read.all` (toàn hệ thống) hoặc `app.read` (tự động lọc theo partner của caller).
+
+**Query params**: `status` (`ApplicationStatus`, optional), `appType` (`ApplicationType`, optional), `page`, `size`.
+
+**Response 200**: `PageResponse<ApplicationResponse>`.
+
+### `POST /api/v1/applications`
+
+Tạo Application (wizard) — tạo App shell và version 1 (`DRAFT`) trong 1 transaction. **Quyền**: `app.create`.
+
+**Request body** (`CreateApplicationRequest`)
+```json
+{
+  "appType": "MINIAPP",
+  "version": {
+    "versionName": "1.0.0",
+    "displayName": "My MiniApp",
+    "packageName": "com.vnpt.miniapp",
+    "descriptionShort": "string",
+    "descriptionLong": "string",
+    "supportedLanguages": ["vi", "en"],
+    "categoryCodes": ["UTILITIES"]
+  }
+}
+```
+
+**Response 200** (`ApplicationResponse`)
+```json
+{
+  "id": "uuid", "appCode": "APP-XXXXXXXX", "appType": "MINIAPP", "status": "DRAFT",
+  "firstParty": false, "killSwitchActive": false, "partnerId": "uuid",
+  "versionCount": 1, "latestVersion": { "...": "VersionResponse" }, "revision": 0
+}
+```
+
+### `GET /api/v1/applications/{id}`
+
+Chi tiết application. **Quyền**: `app.read` + resource-owner.
+
+### Version — `/api/v1/applications/{appId}/versions`
+
+- `GET` — danh sách version, lọc theo `status`. **Quyền**: `version.read`.
+- `POST` — tạo version mới (`version_code` tự tăng), body là `VersionMetadataFields` (như `version` ở trên). **Quyền**: `version.create`.
+- `GET /{versionId}` — chi tiết version. **Quyền**: `version.read`.
+- `PATCH /{versionId}` — cập nhật `displayName/descriptionShort/descriptionLong/supportedLanguages/categoryCodes`; chỉ khi version ở `DRAFT`/`CHANGES_REQUESTED`. **Quyền**: `version.update`.
+
+### Artifact & Validation — `/api/v1/applications/{appId}/versions/{versionId}`
+
+- `POST /artifact` (multipart, field `file`) — upload ZIP (MiniApp) hoặc APK/AAB (Feature App). **Quyền**: `artifact.upload`.
+- `PUT /webapp-config` — `{ "destinationUrl": "https://..." }`, chỉ cho WebApp. **Quyền**: `artifact.upload`.
+- `PUT /module-config` — `{ "moduleNamespace": "string", "description": "string" }`, chỉ cho App Module. **Quyền**: `artifact.upload`.
+- `GET /validation` — kết quả validate mới nhất (`ValidationRunResponse`, `findings[]` gồm `ruleCode/severity/message`). **Quyền**: `version.read`.
+
+### Review — `/api/v1/applications/{appId}/versions/{versionId}`
+
+- `POST /submit` — submit version để review; yêu cầu lần validate gần nhất `PASSED` (trừ App2App). **Quyền**: `version.submit`.
+- `POST /review-decisions` — `{ "decision": "APPROVE|REJECT|REQUEST_CHANGES", "feedback": "string" }` (`feedback` bắt buộc khi không phải `APPROVE`). **Quyền**: `version.review` (Platform Admin hoặc Reviewer, không giới hạn theo partner). Chặn `APPROVE` nếu còn permission ở `PENDING_REVIEW`.
+- `GET /review-history` — toàn bộ các lượt submit + quyết định, theo thứ tự thời gian. **Quyền**: `version.read`.
+
+## 6. Permission Catalog (M3) — `/api/v1/applications/{appId}/versions/{versionId}/permissions`
+
+Khai báo & duyệt quyền thiết bị (`CAMERA`, `MICROPHONE`, ...) theo version. Mỗi permission chỉ được yêu cầu 1 lần/version (`code` không trùng). `justification` bắt buộc, tối thiểu 20 ký tự.
+
+**Luồng trạng thái** (`PermissionRequestStatus`): request được phân loại ngay khi tạo — `BLOCKED` nếu vi phạm rule theo `appType` (PC-04, ví dụ WebApp xin `CAMERA`); `AUTO_APPROVED` nếu `sensitivity=NORMAL` và không phải escalation; ngược lại `PENDING_REVIEW`. `PENDING_REVIEW` chỉ chuyển tiếp qua `APPROVED`/`REJECTED` (`decide`, `reason` bắt buộc khi `REJECT`). `is_escalation` so sánh với version `APPROVED` gần nhất của app: quyền mới hoặc tăng mức nhạy cảm (`NORMAL < DANGEROUS < SIGNATURE`) so với version nền → escalation, ép `PENDING_REVIEW` (bỏ qua nhánh auto-approve) — kể cả khi app chưa có version nào `APPROVED` (mọi permission trên version đầu tiên đều tính là mới).
+
+`BLOCKED` chặn `submit` (`PERMISSION_BLOCKED`); `PENDING_REVIEW` chặn `APPROVE` version (`PERMISSION_PENDING_REVIEW`) — xem mục 5, Review.
+
+### `GET /api/v1/permissions/catalog`
+
+Danh mục permission đang active (`code`, `displayName`, `sensitivity`, `requiresManualReview`). **Quyền**: `permission.catalog.read`.
+
+### `GET .../permissions`
+
+Danh sách permission đã khai báo trên version. **Quyền**: `version.read` + resource-owner.
+
+### `POST .../permissions`
+
+Khai báo permission mới từ catalog.
+
+**Request body** (`RequestPermissionRequest`)
+```json
+{ "permissionCode": "CAMERA", "justification": "Cần camera để quét mã QR thanh toán" }
+```
+
+**Response 200** (`AppVersionPermissionResponse`)
+```json
+{
+  "id": "uuid", "versionId": "uuid", "permissionCode": "CAMERA", "displayName": "Camera",
+  "justification": "string", "resolvedSensitivity": "DANGEROUS", "status": "PENDING_REVIEW",
+  "isEscalation": true, "decidedBy": null, "decisionReason": null,
+  "createdAt": "iso-instant", "decidedAt": null
+}
+```
+
+**Quyền**: `permission.request` + resource-owner. Chỉ khi version ở `DRAFT`/`CHANGES_REQUESTED`.
+
+### `DELETE .../permissions/{permissionRequestId}`
+
+Gỡ permission đã khai báo. **Quyền**: `permission.request` + resource-owner. Chỉ khi version ở `DRAFT`/`CHANGES_REQUESTED`. **Response**: `204 No Content`.
+
+### `POST .../permissions/{permissionRequestId}/decide`
+
+Duyệt/Từ chối permission đang `PENDING_REVIEW`.
+
+**Request body** (`DecidePermissionRequest`)
+```json
+{ "decision": "APPROVE|REJECT", "reason": "string" }
+```
+`reason` bắt buộc khi `REJECT`. **Quyền**: `permission.decide` (Reviewer/Platform Admin, không giới hạn theo partner).
+
+### `GET .../permissions/{permissionRequestId}/history`
+
+Lịch sử sự kiện (`REQUESTED`, `DECIDED`) của 1 permission, theo thứ tự thời gian (PC-07). **Quyền**: `version.read` + resource-owner.
+
+```json
+[{ "id": "uuid", "eventType": "REQUESTED", "actorId": "uuid", "note": "string", "createdAt": "iso-instant" }]
+```
+
+### Quản trị catalog — `/api/v1/permissions/catalog` (Platform Admin)
+
+- `GET .../catalog/all` — toàn bộ catalog kể cả `isActive=false` (dùng cho màn quản trị). **Quyền**: `permission.catalog.manage`.
+- `POST .../catalog` — tạo permission catalog entry mới (`code` phải unique). Body (`CreatePermissionCatalogRequest`): `{ "code": "BLUETOOTH", "displayName": "Bluetooth", "sensitivity": "NORMAL", "requiresManualReview": false }`. **Quyền**: `permission.catalog.manage`.
+- `PATCH .../catalog/{permissionId}` — cập nhật `displayName/sensitivity/requiresManualReview/isActive` (đặt `isActive=false` để deactivate, không xoá cứng). Body (`UpdatePermissionCatalogRequest`). **Quyền**: `permission.catalog.manage`.
+- `PUT .../catalog/{permissionId}/rules/{appType}` — tạo hoặc cập nhật (upsert) rule cho 1 cặp (permission, appType). Body (`UpsertAppTypeRuleRequest`): `{ "effect": "ALLOW|DENY|CONDITIONAL", "reason": "string" }`. **Quyền**: `permission.catalog.manage`.
+- `DELETE .../catalog/{permissionId}/rules/{appType}` — gỡ rule, appType đó quay về mặc định `ALLOW`. **Quyền**: `permission.catalog.manage`. **Response**: `204 No Content`.
+
+---
+
+## 7. Capability Catalog (M4) — `/api/v1/applications/{appId}/versions/{versionId}/capabilities`
+
+Khai báo & duyệt capability runtime (`PUSH_NOTIFICATION`, `BACKGROUND_LOCATION`, `DEEP_LINK`, `BIOMETRIC_AUTH`, ...) theo version. Kiến trúc đồng bộ với M3 (Partner Dev khai báo → Reviewer duyệt) nhưng đơn giản hơn: không có mức nhạy cảm (`sensitivity`) hay escalation detection — catalog chỉ giới hạn theo `allowedAppTypes` (CC-01). Mỗi capability chỉ được yêu cầu 1 lần/version. **Không có `justification` bắt buộc** (khác Permission) và **không nằm trong điều kiện `APPROVE` version** — capability request không chặn submit/approve của version (theo §3.3 của design, chỉ `app_version_permissions`, Public Intent, và validation finding mới là điều kiện).
+
+**Luồng trạng thái** (`CapabilityRequestStatus`): `BLOCKED` nếu `appType` của app không nằm trong `allowedAppTypes` của capability; ngược lại `PENDING_REVIEW` (không có nhánh auto-approve). `PENDING_REVIEW` chỉ chuyển tiếp qua `APPROVED`/`REJECTED` (`decide`, `reason` bắt buộc khi `REJECT`).
+
+### `GET /api/v1/capabilities/catalog`
+
+Danh mục capability đang active (`code`, `displayName`, `allowedAppTypes`). **Quyền**: `capability.catalog.read`.
+
+### Quản trị catalog — `/api/v1/capabilities/catalog` (Platform Admin)
+
+- `GET .../catalog/all` — toàn bộ catalog kể cả inactive. **Quyền**: `capability.catalog.manage`.
+- `POST .../catalog` — tạo capability catalog entry mới. Body (`CreateCapabilityCatalogRequest`): `{ "code": "PUSH_NOTIFICATION", "displayName": "Gửi thông báo đẩy", "allowedAppTypes": ["MINIAPP","WEBAPP"] }`. **Quyền**: `capability.catalog.manage`.
+- `PATCH .../catalog/{capabilityId}` — cập nhật `displayName/allowedAppTypes/isActive`. **Quyền**: `capability.catalog.manage`.
+
+### `GET .../capabilities`
+
+Danh sách capability đã khai báo trên version. **Quyền**: `version.read` + resource-owner.
+
+### `POST .../capabilities`
+
+Khai báo capability mới từ catalog.
+
+**Request body** (`RequestCapabilityRequest`)
+```json
+{ "capabilityCode": "PUSH_NOTIFICATION" }
+```
+
+**Response 200** (`AppVersionCapabilityResponse`)
+```json
+{
+  "id": "uuid", "versionId": "uuid", "capabilityCode": "PUSH_NOTIFICATION", "displayName": "Gửi thông báo đẩy",
+  "status": "PENDING_REVIEW", "decidedBy": null, "decisionReason": null,
+  "createdAt": "iso-instant", "decidedAt": null
+}
+```
+
+**Quyền**: `capability.request` + resource-owner. Chỉ khi version ở `DRAFT`/`CHANGES_REQUESTED`.
+
+### `DELETE .../capabilities/{capabilityRequestId}`
+
+Gỡ capability đã khai báo. **Quyền**: `capability.request` + resource-owner. Chỉ khi version ở `DRAFT`/`CHANGES_REQUESTED`. **Response**: `204 No Content`.
+
+### `POST .../capabilities/{capabilityRequestId}/decide`
+
+Duyệt/Từ chối capability đang `PENDING_REVIEW`.
+
+**Request body** (`DecideCapabilityRequest`)
+```json
+{ "decision": "APPROVE|REJECT", "reason": "string" }
+```
+`reason` bắt buộc khi `REJECT`. **Quyền**: `capability.decide` (Reviewer/Platform Admin, không giới hạn theo partner).
+
+---
+
 ## Nguồn tham chiếu (source-of-truth)
 
 Tài liệu này được sinh trực tiếp từ source code, đối chiếu lại khi API thay đổi:
 
-- Controllers: `security/AuthController.java`, `partner/controller/PartnerController.java`, `partner/controller/PartnerUserController.java`, `partner/controller/AdminUserController.java`, `partner/controller/ProfileController.java`, `partner/controller/AppAssignmentController.java`, `audit/AuditController.java`
-- DTOs: `security/AuthDtos.java`, `partner/dto/PartnerDtos.java`, `partner/dto/UserDtos.java`, `audit/AuditQueryService.java`
+- Controllers: `security/AuthController.java`, `partner/controller/PartnerController.java`, `partner/controller/PartnerUserController.java`, `partner/controller/AdminUserController.java`, `partner/controller/ProfileController.java`, `partner/controller/AppAssignmentController.java`, `audit/AuditController.java`, `applications/controller/ApplicationController.java`, `applications/controller/VersionController.java`, `applications/controller/ArtifactController.java`, `applications/controller/ReviewController.java`, `applications/controller/PermissionController.java`, `applications/controller/CapabilityController.java`
+- DTOs: `security/AuthDtos.java`, `partner/dto/PartnerDtos.java`, `partner/dto/UserDtos.java`, `audit/AuditQueryService.java`, `applications/dto/ApplicationDtos.java`, `applications/dto/VersionDtos.java`, `applications/dto/ArtifactDtos.java`, `applications/dto/ReviewDtos.java`, `applications/dto/PermissionDtos.java`, `applications/dto/CapabilityDtos.java`
 - Envelope & lỗi: `common/response/ApiResponse.java`, `common/response/PageResponse.java`, `common/exception/ErrorCode.java`, `common/exception/GlobalExceptionHandler.java`
 - Xác thực: `security/SecurityConfig.java`, `security/BearerAuthenticationFilter.java`

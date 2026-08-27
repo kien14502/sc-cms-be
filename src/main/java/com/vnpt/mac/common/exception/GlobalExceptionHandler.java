@@ -12,6 +12,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -37,6 +38,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(OptimisticLockingFailureException.class)
     ResponseEntity<ApiError> conflict(OptimisticLockingFailureException ex, HttpServletRequest request) {
         return ResponseEntity.status(409).body(ApiError.of("CONCURRENT_MODIFICATION", "Dữ liệu đã được thay đổi", List.of(), request));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiError> tooLarge(MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        return ResponseEntity.status(413).body(ApiError.of("ARTIFACT_TOO_LARGE", "File vượt quá kích thước cho phép", List.of(), request));
+    }
+
+    @ExceptionHandler(Exception.class)
+    ResponseEntity<ApiError> unhandled(Exception ex, HttpServletRequest request) {
+        return ResponseEntity.status(500).body(ApiError.of("INTERNAL_ERROR", "Lỗi hệ thống", List.of(), request));
     }
 
     record FieldError(String field, String message) {

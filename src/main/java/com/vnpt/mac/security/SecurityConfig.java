@@ -1,5 +1,7 @@
 package com.vnpt.mac.security;
 
+import com.vnpt.mac.common.web.RequestLoggingFilter;
+
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,7 +25,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, BearerAuthenticationFilter bearer) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, BearerAuthenticationFilter bearer,
+                                            RequestLoggingFilter requestLogging) throws Exception {
         return http.csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
@@ -31,6 +34,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(bearer, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(requestLogging, BearerAuthenticationFilter.class)
                 .build();
     }
 
