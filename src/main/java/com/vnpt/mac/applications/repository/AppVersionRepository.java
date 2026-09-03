@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface AppVersionRepository extends JpaRepository<AppVersionEntity, UUID> {
     Page<AppVersionEntity> findByAppId(UUID appId, Pageable pageable);
     Page<AppVersionEntity> findByAppIdAndStatus(UUID appId, VersionStatus status, Pageable pageable);
+    Page<AppVersionEntity> findByStatus(VersionStatus status, Pageable pageable);
     Optional<AppVersionEntity> findTopByAppIdOrderByVersionCodeDesc(UUID appId);
     Optional<AppVersionEntity> findTopByAppIdAndStatusOrderByVersionCodeDesc(UUID appId, VersionStatus status);
     long countByAppId(UUID appId);

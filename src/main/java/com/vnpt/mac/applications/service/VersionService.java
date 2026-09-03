@@ -57,6 +57,12 @@ public class VersionService {
     }
 
     @Transactional(readOnly = true)
+    public Page<VersionResponse> listAllVersions(VersionStatus status, Pageable pageable) {
+        var page = status != null ? versions.findByStatus(status, pageable) : versions.findAll(pageable);
+        return page.map(VersionResponse::from);
+    }
+
+    @Transactional(readOnly = true)
     public VersionResponse getVersion(UUID appId, UUID versionId) {
         return VersionResponse.from(requireVersion(appId, versionId));
     }
