@@ -571,9 +571,9 @@ Yêu cầu xác thực + permission tương ứng, cộng thêm `@resourceAuth.a
 
 ### `GET /api/v1/applications`
 
-Danh sách application. **Quyền**: `app.read.all` (toàn hệ thống) hoặc `app.read` (tự động lọc theo partner của caller).
+Danh sách application. **Quyền**: `app.read.all` (toàn hệ thống) hoặc `app.read` (tự động lọc theo partner của caller — `partnerId` truyền vào bị bỏ qua đối với caller không có `app.read.all`/Reviewer).
 
-**Query params**: `status` (`ApplicationStatus`, optional), `appType` (`ApplicationType`, optional), `page`, `size`.
+**Query params**: `status` (`ApplicationStatus`, optional), `appType` (`ApplicationType`, optional), `partnerId` (`UUID`, optional — chỉ có hiệu lực với caller `app.read.all` hoặc Reviewer), `page`, `size`.
 
 **Response 200**: `PageResponse<ApplicationResponse>`.
 
@@ -629,6 +629,14 @@ Chi tiết application. **Quyền**: `app.read` + resource-owner.
 - `POST /submit` — submit version để review; yêu cầu lần validate gần nhất `PASSED` (trừ App2App). **Quyền**: `version.submit`.
 - `POST /review-decisions` — `{ "decision": "APPROVE|REJECT|REQUEST_CHANGES", "feedback": "string" }` (`feedback` bắt buộc khi không phải `APPROVE`). **Quyền**: `version.review` (Platform Admin hoặc Reviewer, không giới hạn theo partner). Chặn `APPROVE` nếu còn permission ở `PENDING_REVIEW`.
 - `GET /review-history` — toàn bộ các lượt submit + quyết định, theo thứ tự thời gian. **Quyền**: `version.read`.
+
+### Review Queue (xuyên application) — `GET /api/v1/versions`
+
+Hàng đợi review xuyên suốt mọi application — dùng cho màn Review Center thay vì phải vào từng application để tìm version đang review. **Quyền**: `version.review` (không scope theo app/partner, giống `review-decisions`).
+
+**Query params**: `status` (`VersionStatus`, optional — vd `IN_REVIEW`), `page`, `size`.
+
+**Response 200**: `PageResponse<VersionResponse>` (mỗi item có `appId` để điều hướng sang trang chi tiết/quyết định của đúng application).
 
 ## 6. Permission Catalog (M3) — `/api/v1/applications/{appId}/versions/{versionId}/permissions`
 

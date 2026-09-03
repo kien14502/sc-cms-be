@@ -48,14 +48,14 @@ public class ApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ApplicationResponse> list(ApplicationStatus status, ApplicationType appType, Pageable pageable) {
+    public Page<ApplicationResponse> list(ApplicationStatus status, ApplicationType appType, UUID partnerId, Pageable pageable) {
         var principal = currentUser.require();
         boolean global = principal.authorities().stream().anyMatch(a -> a.getAuthority().equals("app.read.all"))
                 || principal.authorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_REVIEWER"));
         if (!global && principal.partnerId() == null) {
             return Page.empty(pageable);
         }
-        UUID scopePartnerId = global ? null : principal.partnerId();
+        UUID scopePartnerId = global ? partnerId : principal.partnerId();
         return applications.search(scopePartnerId, status, appType, pageable).map(this::toResponse);
     }
 

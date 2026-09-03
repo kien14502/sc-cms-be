@@ -27,12 +27,13 @@ public class ApplicationController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('app.read.all') or hasAuthority('app.read')")
-    @Operation(summary = "Danh sách application", description = "Lọc theo status/appType. Partner Admin/Dev chỉ thấy app của partner mình trừ khi có app.read.all.")
+    @Operation(summary = "Danh sách application", description = "Lọc theo status/appType/partnerId. Partner Admin/Dev chỉ thấy app của partner mình (partnerId truyền vào bị bỏ qua) trừ khi có app.read.all.")
     public ApiResponse<PageResponse<ApplicationResponse>> list(@RequestParam(required = false) ApplicationStatus status,
                                                                @RequestParam(required = false) ApplicationType appType,
+                                                               @RequestParam(required = false) UUID partnerId,
                                                                @RequestParam(defaultValue = "0") int page,
                                                                @RequestParam(defaultValue = "20") int size) {
-        return ApiResponse.success(PageResponse.from(service.list(status, appType, PageRequest.of(page, Math.min(size, 100)))));
+        return ApiResponse.success(PageResponse.from(service.list(status, appType, partnerId, PageRequest.of(page, Math.min(size, 100)))));
     }
 
     @PostMapping
